@@ -106,6 +106,7 @@ Fabric 模组 ──HTTP POST /login-request──▶ Bot 服务 ──发送审
 - 鉴权：每个请求都需 `Authorization: Bearer <api_secret>`；缺失或错误 → `401`。服务端用 `hmac.compare_digest` 常数时间比较。
 - 请求与响应体均为 UTF-8 JSON。
 - 错误体统一形状：`{"error":"<机器码>","message":"<中文说明>"}`。
+- 请求体非法（畸形 JSON、非对象、必填字段缺失或类型不符）→ `400` `bad_request`。
 
 ### `GET /api/v1/health`
 

@@ -40,6 +40,28 @@ def _json_error(code: str, message: str, status: int) -> web.Response:
     return web.json_response({"error": code, "message": message}, status=status)
 
 
+async def _read_json_object(
+    request: web.Request, *required: str
+) -> tuple[dict | None, web.Response | None]:
+    """解析请求体：必须是 JSON 对象，且 required 字段均为非空字符串。
+
+    校验通过返回 (body, None)；否则返回 (None, 统一 400 错误响应)。
+    """
+    try:
+        body = await request.json()
+    except Exception:
+        return None, _json_error("bad_request", "请求体不是合法 JSON。", 400)
+    if not isinstance(body, dict):
+        return None, _json_error("bad_request", "请求体必须是 JSON 对象。", 400)
+    for field in required:
+        value = body.get(field)
+        if not isinstance(value, str) or not value:
+            return None, _json_error(
+                "bad_request", f"字段 {field} 缺失或不是非空字符串。", 400
+            )
+    return body, None
+
+
 @web.middleware
 async def _bearer_middleware(request: web.Request, handler):
     """校验 Authorization: Bearer <api_secret>，常数时间比较。"""
@@ -75,7 +97,9 @@ async def _handle_register_token(request: web.Request) -> web.Response:
     cfg: Config = request.app["cfg"]
     reg_limiter: FixedWindowLimiter = request.app["reg_limiter"]
 
-    body = await request.json()
+    body, err = await _read_json_object(request, "mc_uuid", "mc_name")
+    if err is not None:
+        return err
     mc_uuid = body["mc_uuid"]
     mc_name = body["mc_name"]
 
@@ -104,10 +128,14 @@ async def _handle_login_request(request: web.Request) -> web.Response:
     notifier: Notifier = request.app["notifier"]
     login_limiter: FixedWindowLimiter = request.app["login_limiter"]
 
-    body = await request.json()
+    body, err = await _read_json_object(request, "mc_uuid", "mc_name")
+    if err is not None:
+        return err
     mc_uuid = body["mc_uuid"]
     mc_name = body["mc_name"]
     ip = body.get("ip")
+    if ip is not None and not isinstance(ip, str):
+        return _json_error("bad_request", "字段 ip 必须是字符串。", 400)
 
     binding = await db.get_binding_by_uuid(mc_uuid)
     if binding is None:

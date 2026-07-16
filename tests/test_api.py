@@ -116,6 +116,49 @@ async def test_register_token_rate_limited(client, auth_headers):
     assert (await r6.json())["error"] == "rate_limited"
 
 
+async def test_register_token_malformed_json(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/register-token", headers=auth_headers, data="{not json"
+    )
+    assert resp.status == 400
+    assert (await resp.json())["error"] == "bad_request"
+
+
+async def test_register_token_missing_field(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/register-token", headers=auth_headers, json={"mc_uuid": "uuid-x"}
+    )
+    assert resp.status == 400
+    assert (await resp.json())["error"] == "bad_request"
+
+
+async def test_register_token_body_not_object(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/register-token", headers=auth_headers, json=["mc_uuid", "mc_name"]
+    )
+    assert resp.status == 400
+    assert (await resp.json())["error"] == "bad_request"
+
+
+async def test_login_request_missing_field(client, auth_headers):
+    resp = await client.post(
+        "/api/v1/login-request", headers=auth_headers, json={"mc_uuid": "uuid-x"}
+    )
+    assert resp.status == 400
+    assert (await resp.json())["error"] == "bad_request"
+
+
+async def test_login_request_ip_not_string(client, auth_headers, db):
+    await db.create_binding(42, "uuid-x", "Steve")
+    resp = await client.post(
+        "/api/v1/login-request",
+        headers=auth_headers,
+        json={"mc_uuid": "uuid-x", "mc_name": "Steve", "ip": 123},
+    )
+    assert resp.status == 400
+    assert (await resp.json())["error"] == "bad_request"
+
+
 async def test_login_request_happy(client, auth_headers, db, notifier):
     await db.create_binding(42, "uuid-x", "Steve")
     resp = await client.post(
