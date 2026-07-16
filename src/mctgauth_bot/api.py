@@ -158,14 +158,8 @@ async def _handle_login_request(request: web.Request) -> web.Response:
             status=200,
         )
 
-    # 限流：mc_uuid 与 ip 两个维度都要通过。
-    allowed = login_limiter.allow(mc_uuid)
-    if allowed and ip is not None:
-        allowed = login_limiter.allow(f"ip:{ip}")
-    if not allowed:
-        await db.release_login_request(request_id)
-        return _json_error("rate_limited", "登录请求过于频繁，请稍后再试。", 429)
-
+    # 旧 pending 已被 reserve 原子置为 expired，其 TG 消息必须关闭：sweeper 只扫
+    # status='pending'，不会兜底这条已改状态的行。故要早于可能提前返回的限流分支。
     if (
         expired is not None
         and expired["tg_chat_id"] is not None
@@ -181,6 +175,14 @@ async def _handle_login_request(request: web.Request) -> web.Response:
             log.warning(
                 "编辑过期登录消息失败：request_id=%s", expired["id"], exc_info=True
             )
+
+    # 限流：mc_uuid 与 ip 两个维度都要通过。
+    allowed = login_limiter.allow(mc_uuid)
+    if allowed and ip is not None:
+        allowed = login_limiter.allow(f"ip:{ip}")
+    if not allowed:
+        await db.release_login_request(request_id)
+        return _json_error("rate_limited", "登录请求过于频繁，请稍后再试。", 429)
 
     try:
         chat_id, message_id = await notifier.send_login_prompt(

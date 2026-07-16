@@ -257,6 +257,40 @@ async def test_login_request_replaces_expired_pending(
     assert (await db.get_login_request("expired-request"))["status"] == "expired"
 
 
+async def test_login_request_rate_limited_still_closes_expired_message(
+    client, auth_headers, db, notifier
+):
+    await db.create_binding(42, "uuid-x", "Steve")
+    now = int(time.time())
+    await db.create_login_request(
+        "expired-request",
+        "uuid-x",
+        "Steve",
+        "1.2.3.4",
+        now - 60,
+        now - 1,
+        tg_chat_id=42,
+        tg_message_id=999,
+    )
+    # 耗尽 mc_uuid 维度限流，令新请求必命中 429。
+    limiter = client.app["login_limiter"]
+    for _ in range(client.app["cfg"].login_max_calls):
+        assert limiter.allow("uuid-x")
+
+    response = await client.post(
+        "/api/v1/login-request",
+        headers=auth_headers,
+        json={"mc_uuid": "uuid-x", "mc_name": "Steve", "ip": "1.2.3.4"},
+    )
+
+    assert response.status == 429
+    # 旧过期请求的消息仍被关闭，且未发新提示、预留行已回滚。
+    assert notifier.close_calls[0][:2] == (42, 999)
+    assert notifier.send_calls == []
+    assert await db.get_pending_for_uuid("uuid-x") is None
+    assert (await db.get_login_request("expired-request"))["status"] == "expired"
+
+
 async def test_login_request_not_bound(client, auth_headers):
     resp = await client.post(
         "/api/v1/login-request",
