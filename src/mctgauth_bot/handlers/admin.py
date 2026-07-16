@@ -3,6 +3,7 @@
 路由级过滤 admin_ids；非管理员的消息被静默忽略（不做任何回复）。
 """
 
+import html
 import logging
 from datetime import datetime, timezone
 
@@ -67,9 +68,12 @@ async def handle_list(
     rows = await db.list_bindings(PAGE_SIZE, offset)
     lines = [cfg.msg("admin_list_header", page=page, total=total)]
     for r in rows:
+        # mc_name / mc_uuid 是外部值，直接拼进 HTML 前需转义（tg_user_id 为整数，安全）。
+        name = html.escape(r["mc_name"], quote=False)
+        mc_uuid = html.escape(r["mc_uuid"], quote=False)
         lines.append(
-            f"<code>{r['tg_user_id']}</code> — <b>{r['mc_name']}</b> "
-            f"(<code>{r['mc_uuid']}</code>)"
+            f"<code>{r['tg_user_id']}</code> — <b>{name}</b> "
+            f"(<code>{mc_uuid}</code>)"
         )
     await message.answer("\n".join(lines))
 

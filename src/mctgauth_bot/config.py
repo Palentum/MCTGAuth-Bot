@@ -4,6 +4,7 @@
 config.toml 缺失时全部走默认。bot_token 或 api_secret 为空则立即报错。
 """
 
+import html
 import os
 import tomllib
 from dataclasses import dataclass, field
@@ -96,9 +97,17 @@ class Config:
     messages: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_MESSAGES))
 
     def msg(self, key: str, **kwargs: object) -> str:
-        """取一条文案并按需 format；未配置的 key 回退到内置默认。"""
+        """取一条文案并按需 format；未配置的 key 回退到内置默认。
+
+        文案在 HTML 解析模式下发送，模板自带的 HTML 标签需保留，但占位符插入的
+        是运行时外部值（mc_name、ip、mc_uuid 等，来源可能是被攻陷的模组），必须
+        转义以防注入 HTML 标签伪造文案或使 Telegram 拒发。
+        """
         template = self.messages.get(key, DEFAULT_MESSAGES[key])
-        return template.format(**kwargs) if kwargs else template
+        if not kwargs:
+            return template
+        escaped = {k: html.escape(str(v), quote=False) for k, v in kwargs.items()}
+        return template.format(**escaped)
 
 
 def load_config(config_path: str = "config.toml") -> Config:
