@@ -236,6 +236,58 @@ class Database:
             )
             await self._conn.commit()
 
+    async def reserve_login_request(
+        self,
+        request_id: str,
+        mc_uuid: str,
+        mc_name: str,
+        ip: str | None,
+        created_at: int,
+        expires_at: int,
+    ) -> tuple[dict | None, dict | None]:
+        """原子地复用未过期请求，或过期旧请求并预留新请求。
+
+        返回 (existing, expired)：existing 非空表示复用；否则已插入一条
+        尚无 Telegram 消息 ID 的 pending 请求。
+        """
+        async with self._lock:
+            cur = await self._conn.execute(
+                "SELECT * FROM login_requests WHERE mc_uuid=? AND status='pending'",
+                (mc_uuid,),
+            )
+            pending = _row_to_dict(await cur.fetchone())
+            if pending is not None and pending["expires_at"] > created_at:
+                return pending, None
+
+            try:
+                if pending is not None:
+                    await self._conn.execute(
+                        "UPDATE login_requests SET status='expired' WHERE id=?",
+                        (pending["id"],),
+                    )
+                await self._conn.execute(
+                    "INSERT INTO login_requests "
+                    "(id, mc_uuid, mc_name, ip, status, created_at, expires_at) "
+                    "VALUES (?, ?, ?, ?, 'pending', ?, ?)",
+                    (request_id, mc_uuid, mc_name, ip, created_at, expires_at),
+                )
+                await self._conn.commit()
+            except Exception:
+                await self._conn.rollback()
+                raise
+            return None, pending
+
+    async def release_login_request(self, request_id: str) -> None:
+        """删除尚未发出 Telegram 消息的预留请求。"""
+        async with self._lock:
+            await self._conn.execute(
+                "DELETE FROM login_requests "
+                "WHERE id=? AND status='pending' "
+                "AND tg_chat_id IS NULL AND tg_message_id IS NULL",
+                (request_id,),
+            )
+            await self._conn.commit()
+
     async def set_login_tg_message(
         self, request_id: str, tg_chat_id: int, tg_message_id: int
     ) -> None:

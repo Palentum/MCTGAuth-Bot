@@ -124,8 +124,16 @@ async def _handle_login_request(request: web.Request) -> web.Response:
         return _json_error("not_bound", "该角色尚未绑定 Telegram 账号。", 404)
 
     now = int(time.time())
-    # 已有未过期 pending 请求则复用，不再发第二条消息。
-    existing = await db.get_pending_for_uuid(mc_uuid, now)
+    request_id = str(uuid.uuid4())
+    expires_at = now + cfg.login_ttl
+    existing, expired = await db.reserve_login_request(
+        request_id=request_id,
+        mc_uuid=mc_uuid,
+        mc_name=mc_name,
+        ip=ip,
+        created_at=now,
+        expires_at=expires_at,
+    )
     if existing is not None:
         return web.json_response(
             {"request_id": existing["id"], "expires_at": existing["expires_at"]},
@@ -133,34 +141,39 @@ async def _handle_login_request(request: web.Request) -> web.Response:
         )
 
     # 限流：mc_uuid 与 ip 两个维度都要通过。
-    if not login_limiter.allow(mc_uuid):
-        return _json_error("rate_limited", "登录请求过于频繁，请稍后再试。", 429)
-    if ip is not None and not login_limiter.allow(f"ip:{ip}"):
+    allowed = login_limiter.allow(mc_uuid)
+    if allowed and ip is not None:
+        allowed = login_limiter.allow(f"ip:{ip}")
+    if not allowed:
+        await db.release_login_request(request_id)
         return _json_error("rate_limited", "登录请求过于频繁，请稍后再试。", 429)
 
-    request_id = str(uuid.uuid4())
-    expires_at = now + cfg.login_ttl
+    if (
+        expired is not None
+        and expired["tg_chat_id"] is not None
+        and expired["tg_message_id"] is not None
+    ):
+        try:
+            await notifier.close_request_message(
+                expired["tg_chat_id"],
+                expired["tg_message_id"],
+                cfg.msg("login_expired", mc_name=expired["mc_name"]),
+            )
+        except Exception:
+            log.warning(
+                "编辑过期登录消息失败：request_id=%s", expired["id"], exc_info=True
+            )
 
-    # 先发 Telegram 消息，成功后才落库；失败则不创建请求。
     try:
         chat_id, message_id = await notifier.send_login_prompt(
             binding["tg_user_id"], mc_name, ip or "", request_id
         )
     except Exception:
+        await db.release_login_request(request_id)
         log.warning("向用户 %s 发送登录提示失败", binding["tg_user_id"], exc_info=True)
         return _json_error("tg_send_failed", "无法向绑定用户发送 Telegram 消息。", 502)
 
-    await db.create_login_request(
-        request_id=request_id,
-        mc_uuid=mc_uuid,
-        mc_name=mc_name,
-        ip=ip,
-        created_at=now,
-        expires_at=expires_at,
-        tg_chat_id=chat_id,
-        tg_message_id=message_id,
-    )
-
+    await db.set_login_tg_message(request_id, chat_id, message_id)
     return web.json_response(
         {"request_id": request_id, "expires_at": expires_at}, status=201
     )
@@ -172,7 +185,12 @@ async def _handle_get_login_request(request: web.Request) -> web.Response:
     row = await db.get_login_request(request_id)
     if row is None:
         return _json_error("not_found", "登录请求不存在。", 404)
-    return web.json_response({"status": row["status"]})
+    status = (
+        "expired"
+        if row["status"] == "pending" and row["expires_at"] <= int(time.time())
+        else row["status"]
+    )
+    return web.json_response({"status": status})
 
 
 async def _handle_delete_login_request(request: web.Request) -> web.Response:

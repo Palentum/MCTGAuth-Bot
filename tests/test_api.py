@@ -1,5 +1,6 @@
 """HTTP API 测试：鉴权、各端点契约、限流、通知副作用。"""
 
+import asyncio
 import time
 
 from mctgauth_bot.tokens import TOKEN_RE
@@ -133,6 +134,68 @@ async def test_login_request_reuse_pending(client, auth_headers, db, notifier):
     assert len(notifier.send_calls) == 1
 
 
+async def test_login_request_concurrent_reuses_reservation(
+    client, auth_headers, db, notifier
+):
+    await db.create_binding(42, "uuid-x", "Steve")
+    first_send_started = asyncio.Event()
+    second_send_started = asyncio.Event()
+    release_send = asyncio.Event()
+
+    async def blocking_send(tg_user_id, mc_name, ip, request_id):
+        notifier.send_calls.append((tg_user_id, mc_name, ip, request_id))
+        (first_send_started if len(notifier.send_calls) == 1 else second_send_started).set()
+        await release_send.wait()
+        return tg_user_id, 1000 + len(notifier.send_calls)
+
+    notifier.send_login_prompt = blocking_send
+    payload = {"mc_uuid": "uuid-x", "mc_name": "Steve", "ip": "1.2.3.4"}
+    first = asyncio.create_task(
+        client.post("/api/v1/login-request", headers=auth_headers, json=payload)
+    )
+    await first_send_started.wait()
+    second = asyncio.create_task(
+        client.post("/api/v1/login-request", headers=auth_headers, json=payload)
+    )
+    second_send = asyncio.create_task(second_send_started.wait())
+    await asyncio.wait({second, second_send}, return_when=asyncio.FIRST_COMPLETED)
+    release_send.set()
+    responses = await asyncio.gather(first, second)
+    second_send.cancel()
+
+    assert sorted(response.status for response in responses) == [200, 201]
+    assert len(notifier.send_calls) == 1
+    assert len({(await response.json())["request_id"] for response in responses}) == 1
+
+
+async def test_login_request_replaces_expired_pending(
+    client, auth_headers, db, notifier
+):
+    await db.create_binding(42, "uuid-x", "Steve")
+    now = int(time.time())
+    await db.create_login_request(
+        "expired-request",
+        "uuid-x",
+        "Steve",
+        "1.2.3.4",
+        now - 60,
+        now - 1,
+        tg_chat_id=42,
+        tg_message_id=999,
+    )
+
+    response = await client.post(
+        "/api/v1/login-request",
+        headers=auth_headers,
+        json={"mc_uuid": "uuid-x", "mc_name": "Steve", "ip": "1.2.3.4"},
+    )
+
+    assert response.status == 201
+    assert len(notifier.send_calls) == 1
+    assert notifier.close_calls[0][:2] == (42, 999)
+    assert (await db.get_login_request("expired-request"))["status"] == "expired"
+
+
 async def test_login_request_not_bound(client, auth_headers):
     resp = await client.post(
         "/api/v1/login-request",
@@ -155,6 +218,7 @@ async def test_login_request_tg_send_failed(client, auth_headers, db, notifier):
     assert (await resp.json())["error"] == "tg_send_failed"
     # 发送失败不创建请求。
     assert await db.get_pending_for_uuid("uuid-x") is None
+    assert await db.get_login_request(notifier.send_calls[0][3]) is None
 
 
 async def test_login_request_rate_limited(client, auth_headers, db):
@@ -188,6 +252,22 @@ async def test_get_login_request_status(client, auth_headers, db, notifier):
     resp = await client.get(f"/api/v1/login-request/{rid}", headers=auth_headers)
     assert resp.status == 200
     assert (await resp.json())["status"] == "pending"
+
+
+async def test_get_login_request_reports_expired_before_sweeper(
+    client, auth_headers, db
+):
+    now = int(time.time())
+    await db.create_login_request(
+        "expired-request", "uuid-x", "Steve", None, now - 60, now - 1
+    )
+
+    response = await client.get(
+        "/api/v1/login-request/expired-request", headers=auth_headers
+    )
+
+    assert response.status == 200
+    assert (await response.json())["status"] == "expired"
 
 
 async def test_get_login_request_unknown(client, auth_headers):
