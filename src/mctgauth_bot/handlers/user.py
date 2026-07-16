@@ -19,7 +19,6 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     Message,
 )
-from aiosqlite import IntegrityError
 
 from ..config import Config
 from ..db import Database
@@ -109,29 +108,18 @@ def build_login_keyboard(cfg: Config, request_id: str) -> InlineKeyboardMarkup:
 
 
 async def _do_bind(message: Message, token: str, db: Database, cfg: Config) -> None:
-    """执行绑定流程：校验令牌与占用，写入绑定，回复结果。"""
-    tg_user_id = message.from_user.id
-
-    # 发送者若已绑定，直接拒绝。
-    if await db.get_binding_by_tg(tg_user_id) is not None:
-        await message.answer(cfg.msg("bind_already_bound_tg"))
-        return
-
-    row = await db.consume_token(token)
+    """原子消费令牌并创建绑定，回复对应结果。"""
+    status, row = await db.consume_token_and_create_binding(message.from_user.id, token)
     if row is None:
-        await message.answer(cfg.msg("bind_token_not_found"))
+        message_key = {
+            "tg_conflict": "bind_already_bound_tg",
+            "uuid_conflict": "bind_already_bound_uuid",
+            "token_not_found": "bind_token_not_found",
+        }[status]
+        await message.answer(cfg.msg(message_key))
         return
 
-    mc_uuid = row["mc_uuid"]
-    mc_name = row["mc_name"]
-    try:
-        await db.create_binding(tg_user_id, mc_uuid, mc_name)
-    except IntegrityError:
-        # 竞态：令牌消费后、写绑定前，该 mc_uuid（或本 tg 账号）已被占用。
-        await message.answer(cfg.msg("bind_already_bound_uuid"))
-        return
-
-    await message.answer(cfg.msg("bind_success", mc_name=mc_name))
+    await message.answer(cfg.msg("bind_success", mc_name=row["mc_name"]))
 
 
 @router.message(CommandStart(deep_link=True))

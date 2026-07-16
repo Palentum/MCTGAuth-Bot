@@ -238,6 +238,52 @@ class Database:
             await self._conn.commit()
             return row
 
+    async def consume_token_and_create_binding(
+        self, tg_user_id: int, token: str, now: int | None = None
+    ) -> tuple[str, dict | None]:
+        """原子消费令牌并创建绑定，返回结果状态与成功消费的令牌行。"""
+        if now is None:
+            now = int(time.time())
+        async with self._lock:
+            await self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                cur = await self._conn.execute(
+                    "SELECT 1 FROM bindings WHERE tg_user_id=?", (tg_user_id,)
+                )
+                if await cur.fetchone() is not None:
+                    await self._conn.rollback()
+                    return "tg_conflict", None
+
+                cur = await self._conn.execute(
+                    "SELECT * FROM pending_tokens WHERE token=? AND expires_at>?",
+                    (token, now),
+                )
+                row = _row_to_dict(await cur.fetchone())
+                if row is None:
+                    await self._conn.rollback()
+                    return "token_not_found", None
+
+                cur = await self._conn.execute(
+                    "SELECT 1 FROM bindings WHERE mc_uuid=?", (row["mc_uuid"],)
+                )
+                if await cur.fetchone() is not None:
+                    await self._conn.rollback()
+                    return "uuid_conflict", None
+
+                await self._conn.execute(
+                    "INSERT INTO bindings (tg_user_id, mc_uuid, mc_name, created_at) "
+                    "VALUES (?, ?, ?, ?)",
+                    (tg_user_id, row["mc_uuid"], row["mc_name"], now),
+                )
+                await self._conn.execute(
+                    "DELETE FROM pending_tokens WHERE token=?", (token,)
+                )
+                await self._conn.commit()
+                return "success", row
+            except Exception:
+                await self._conn.rollback()
+                raise
+
     async def delete_expired_tokens(self, now: int | None = None) -> int:
         if now is None:
             now = int(time.time())

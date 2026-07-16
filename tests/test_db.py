@@ -1,9 +1,10 @@
 """数据层测试：1:1 约束、令牌一次性、状态机、部分唯一索引。"""
 
+import asyncio
 import time
 
 import pytest
-from aiosqlite import IntegrityError
+from aiosqlite import IntegrityError, OperationalError
 
 
 async def test_binding_unique_both_directions(db):
@@ -50,6 +51,47 @@ async def test_upsert_token_idempotent_by_uuid(db):
     assert live["mc_name"] == "AliceRenamed"
     # 旧令牌不应再可消费。
     assert await db.consume_token("TOKEN111") is None
+
+
+async def test_redeem_token_keeps_losing_token_and_classifies_conflicts(db):
+    now = int(time.time())
+    await db.upsert_token("TOKENAAA", "uuid-a", "Alice", now + 300)
+    await db.upsert_token("TOKENBBB", "uuid-b", "Bob", now + 300)
+
+    results = await asyncio.gather(
+        db.consume_token_and_create_binding(1, "TOKENAAA", now),
+        db.consume_token_and_create_binding(1, "TOKENBBB", now),
+    )
+    assert sorted(status for status, _ in results) == ["success", "tg_conflict"]
+
+    binding = await db.get_binding_by_tg(1)
+    losing_uuid = "uuid-b" if binding["mc_uuid"] == "uuid-a" else "uuid-a"
+    assert await db.get_live_token_for_uuid(losing_uuid, now) is not None
+
+    await db.upsert_token("TOKENCCC", binding["mc_uuid"], binding["mc_name"], now + 300)
+    status, row = await db.consume_token_and_create_binding(2, "TOKENCCC", now)
+    assert (status, row) == ("uuid_conflict", None)
+    assert await db.get_live_token_for_uuid(binding["mc_uuid"], now) is not None
+
+
+async def test_redeem_token_rolls_back_database_error(db, monkeypatch):
+    now = int(time.time())
+    await db.upsert_token("TOKENAAA", "uuid-a", "Alice", now + 300)
+    original_execute = db._conn.execute
+
+    async def fail_token_delete(sql, parameters=None):
+        if sql.startswith("DELETE FROM pending_tokens"):
+            raise OperationalError("forced failure")
+        if parameters is None:
+            return await original_execute(sql)
+        return await original_execute(sql, parameters)
+
+    monkeypatch.setattr(db._conn, "execute", fail_token_delete)
+    with pytest.raises(OperationalError, match="forced failure"):
+        await db.consume_token_and_create_binding(1, "TOKENAAA", now)
+
+    assert await db.get_binding_by_tg(1) is None
+    assert await db.get_live_token_for_uuid("uuid-a", now) is not None
 
 
 async def test_set_login_status_only_from_pending(db):
