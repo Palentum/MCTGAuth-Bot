@@ -10,6 +10,8 @@ import time
 
 import aiosqlite
 
+from .tokens import generate_token
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS bindings (
   tg_user_id INTEGER NOT NULL UNIQUE,
@@ -148,6 +150,50 @@ class Database:
             return binding
 
     # ---- pending_tokens ----
+
+    async def issue_token(
+        self, mc_uuid: str, mc_name: str, now: int, expires_at: int
+    ) -> dict:
+        """原子地复用未过期令牌或签发新令牌，并刷新 mc_name。"""
+        async with self._lock:
+            await self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                cur = await self._conn.execute(
+                    "SELECT * FROM pending_tokens WHERE mc_uuid=? AND expires_at>?",
+                    (mc_uuid, now),
+                )
+                token = _row_to_dict(await cur.fetchone())
+                if token is not None:
+                    await self._conn.execute(
+                        "UPDATE pending_tokens SET mc_name=? WHERE token=?",
+                        (mc_name, token["token"]),
+                    )
+                    token["mc_name"] = mc_name
+                else:
+                    token = {
+                        "token": generate_token(),
+                        "mc_uuid": mc_uuid,
+                        "mc_name": mc_name,
+                        "expires_at": expires_at,
+                    }
+                    await self._conn.execute(
+                        "INSERT INTO pending_tokens (token, mc_uuid, mc_name, expires_at) "
+                        "VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(mc_uuid) DO UPDATE SET "
+                        "token=excluded.token, mc_name=excluded.mc_name, "
+                        "expires_at=excluded.expires_at",
+                        (
+                            token["token"],
+                            token["mc_uuid"],
+                            token["mc_name"],
+                            token["expires_at"],
+                        ),
+                    )
+                await self._conn.commit()
+                return token
+            except Exception:
+                await self._conn.rollback()
+                raise
 
     async def get_live_token_for_uuid(self, mc_uuid: str, now: int | None = None) -> dict | None:
         """返回该 mc_uuid 未过期的令牌行；无则 None。"""

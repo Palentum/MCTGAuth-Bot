@@ -14,7 +14,6 @@ from aiohttp import web
 from .config import Config
 from .db import Database
 from .ratelimit import FixedWindowLimiter
-from .tokens import generate_token
 
 log = logging.getLogger(__name__)
 
@@ -88,21 +87,12 @@ async def _handle_register_token(request: web.Request) -> web.Response:
         return _json_error("rate_limited", "请求过于频繁，请稍后再试。", 429)
 
     now = int(time.time())
-    # 幂等：已有未过期令牌则复用（同时刷新 mc_name）。
-    live = await db.get_live_token_for_uuid(mc_uuid, now)
-    if live is not None:
-        token = live["token"]
-        expires_at = live["expires_at"]
-        await db.upsert_token(token, mc_uuid, mc_name, expires_at)
-    else:
-        token = generate_token()
-        expires_at = now + cfg.token_ttl
-        await db.upsert_token(token, mc_uuid, mc_name, expires_at)
+    token = await db.issue_token(mc_uuid, mc_name, now, now + cfg.token_ttl)
 
     return web.json_response(
         {
-            "token": token,
-            "expires_at": expires_at,
+            "token": token["token"],
+            "expires_at": token["expires_at"],
             "bot_username": request.app["bot_username"],
         }
     )

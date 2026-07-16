@@ -69,6 +69,24 @@ async def test_register_token_idempotent(client, auth_headers):
     assert body2["token"] == t1
 
 
+async def test_register_token_idempotent_when_concurrent(client, auth_headers, db):
+    responses = await asyncio.gather(
+        *(
+            client.post(
+                "/api/v1/register-token",
+                headers=auth_headers,
+                json={"mc_uuid": "uuid-x", "mc_name": "Steve"},
+            )
+            for _ in range(2)
+        )
+    )
+    bodies = [await response.json() for response in responses]
+
+    assert [response.status for response in responses] == [200, 200]
+    assert bodies[0]["token"] == bodies[1]["token"]
+    assert (await db.get_live_token_for_uuid("uuid-x"))["token"] == bodies[0]["token"]
+
+
 async def test_register_token_already_bound(client, auth_headers, db):
     await db.create_binding(42, "uuid-x", "Steve")
     resp = await client.post(
