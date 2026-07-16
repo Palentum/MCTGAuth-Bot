@@ -208,7 +208,11 @@ async def _handle_delete_login_request(request: web.Request) -> web.Response:
         return web.json_response({"status": row["status"]})
 
     # pending → cancelled，并编辑 TG 消息移除按钮。
-    await db.set_login_status(request_id, "cancelled")
+    if not await db.set_login_status(request_id, "cancelled"):
+        row = await db.get_login_request(request_id)
+        if row is None:
+            return _json_error("not_found", "登录请求不存在。", 404)
+        return web.json_response({"status": row["status"]})
     if row["tg_chat_id"] is not None and row["tg_message_id"] is not None:
         try:
             await notifier.close_request_message(

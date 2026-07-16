@@ -313,6 +313,33 @@ async def test_delete_login_request_terminal(client, auth_headers, db, notifier)
     assert len(notifier.close_calls) == 0
 
 
+async def test_delete_login_request_loses_cancel_race(
+    client, auth_headers, db, notifier, monkeypatch
+):
+    await db.create_binding(42, "uuid-race", "Steve")
+    response = await client.post(
+        "/api/v1/login-request",
+        headers=auth_headers,
+        json={"mc_uuid": "uuid-race", "mc_name": "Steve", "ip": "1.2.3.4"},
+    )
+    request_id = (await response.json())["request_id"]
+    original_set_status = db.set_login_status
+
+    async def approve_before_cancel(request_id, status):
+        assert await original_set_status(request_id, "approved")
+        return await original_set_status(request_id, status)
+
+    monkeypatch.setattr(db, "set_login_status", approve_before_cancel)
+
+    response = await client.delete(
+        f"/api/v1/login-request/{request_id}", headers=auth_headers
+    )
+
+    assert await response.json() == {"status": "approved"}
+    assert notifier.close_calls == []
+    assert (await db.get_login_request(request_id))["status"] == "approved"
+
+
 async def test_delete_login_request_unknown(client, auth_headers):
     resp = await client.delete("/api/v1/login-request/nope", headers=auth_headers)
     assert resp.status == 404

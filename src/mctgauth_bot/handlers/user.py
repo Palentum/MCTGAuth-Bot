@@ -205,7 +205,9 @@ async def handle_login_callback(
     now = int(time.time())
     # 已过期：置为 expired 并编辑消息。
     if row["status"] == "pending" and row["expires_at"] <= now:
-        await db.set_login_status(request_id, "expired")
+        if not await db.set_login_status(request_id, "expired"):
+            await callback.answer(cfg.msg("login_cb_not_pending"), show_alert=True)
+            return
         await callback.message.edit_text(
             cfg.msg("login_expired", mc_name=row["mc_name"])
         )
