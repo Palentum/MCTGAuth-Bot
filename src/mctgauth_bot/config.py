@@ -21,7 +21,30 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "bind_token_not_found": "令牌无效或已过期，请回到游戏重新获取绑定令牌。",
     "bind_already_bound_tg": "你的 Telegram 账号已绑定过一个游戏角色，无法重复绑定。",
     "bind_already_bound_uuid": "该游戏角色已被其他 Telegram 账号绑定。",
-    "start_no_payload": "你好！请把游戏中获得的 8 位绑定令牌直接发送给我以完成账号绑定。",
+    # 用户面板
+    "panel_bound": (
+        "<b>用户面板</b>\n\n"
+        "已绑定角色：<b>{mc_name}</b>\n"
+        "绑定时间：{created_at}\n\n"
+        "登录服务器时，我会向你发送审批消息。"
+    ),
+    "panel_unbound": (
+        "<b>用户面板</b>\n\n"
+        "当前未绑定任何游戏角色。\n"
+        "请把游戏中获得的 8 位绑定令牌直接发送给我完成绑定。"
+    ),
+    "panel_help": (
+        "<b>使用帮助</b>\n\n"
+        "1. 进入游戏服务器，执行 <code>/account register</code> 获取 8 位绑定令牌；\n"
+        "2. 把令牌直接发送给我，完成账号绑定；\n"
+        "3. 回到游戏执行 <code>/account login</code>，然后点击我发来的审批消息中的「同意」即可进入。\n\n"
+        "命令：\n"
+        "<code>/start</code> — 打开用户面板\n"
+        "<code>/help</code> — 显示本帮助"
+    ),
+    "panel_btn_refresh": "🔄 刷新",
+    "panel_btn_help": "❓ 帮助",
+    "panel_btn_back": "⬅️ 返回",
     # 登录审批
     "login_prompt": "<b>{mc_name}</b> 正在从 IP <code>{ip}</code> 请求登录服务器。",
     "login_btn_approve": "同意",
