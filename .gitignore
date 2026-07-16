@@ -1,0 +1,38 @@
+# --- Python / 构建产物 ---
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+dist/
+
+# --- 运行时数据 ---
+*.db
+*.db-wal
+*.db-shm
+config.toml
+
+# --- Claude Code 开发工作区（仅本地） ---
+CLAUDE.md
+.claude/
+docs/
+
+# --- IDE / OS 噪声 ---
+.idea/
+.DS_Store
+
+# --- 密钥 / 凭据 ---
+.env
+.env.*
+!.env.example
+proxy/
+
+# --- 用户数据 / 会话 ---
+userdata/
+session/
+
+# --- 个人文档与导出 ---
+*_article
+*.docx
+*.doc
+*.xlsx
+*.csv

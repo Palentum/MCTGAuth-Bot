@@ -1,0 +1,41 @@
+# mctgauth-bot 配置示例
+# 复制为 config.toml 后按需修改。所有键均可省略（省略即用下方默认值）。
+# 注意：bot_token 与 api_secret 推荐用环境变量（BOT_TOKEN、API_SECRET）注入，
+#       环境变量优先级高于本文件。config.toml 不应进入版本库。
+
+# Telegram Bot Token（BotFather 获取）。也可用环境变量 BOT_TOKEN 覆盖。
+# bot_token = "123456:ABC-DEF..."
+
+# HTTP API 的 Bearer 密钥。也可用环境变量 API_SECRET 覆盖。
+# 生成方式：openssl rand -hex 32
+# api_secret = "..."
+
+# HTTP API 监听地址与端口。默认仅监听本机回环，避免暴露到局域网。
+listen_host = "127.0.0.1"
+listen_port = 8632
+
+# 管理员 Telegram 用户 ID 列表，可使用 /list /whois /unbind /help。
+admin_ids = []
+
+# 绑定令牌有效期（秒）。
+token_ttl = 300
+
+# 登录请求有效期（秒）。超时后请求自动置为 expired。
+login_ttl = 300
+
+# 限流：register-token 每 register_window 秒至多 register_max_calls 次（按 mc_uuid）。
+register_max_calls = 5
+register_window = 600
+
+# 限流：login-request 每 login_window 秒至多 login_max_calls 次（按 mc_uuid 与 ip 分别计）。
+login_max_calls = 10
+login_window = 600
+
+# SQLite 数据库文件路径。
+db_path = "mctgauth.db"
+
+# 用户可见文案覆盖（可选）。未列出的键使用内置中文默认值。
+# 带占位符的文案需保留对应 {占位符}，否则渲染会报错。
+# [messages]
+# bind_success = "绑定成功！角色 <b>{mc_name}</b> 已关联，请在游戏中执行 /account login。"
+# login_prompt = "<b>{mc_name}</b> 正在从 IP <code>{ip}</code> 请求登录服务器。"
