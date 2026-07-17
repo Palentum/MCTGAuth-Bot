@@ -70,6 +70,9 @@ async def run(cfg: Config) -> None:
     # 通过 workflow_data 注入依赖，供 handler 参数按名取用。
     dp["db"] = db
     dp["cfg"] = cfg
+    # ping 路由最先注册：/ping 在任意 chat 类型中均可响应；
+    # admin / user 路由自带仅私聊过滤，群组内其余命令静默忽略。
+    dp.include_router(user_handlers.ping_router)
     dp.include_router(admin_handlers.setup_admin_router(cfg))
     dp.include_router(user_handlers.router)
 

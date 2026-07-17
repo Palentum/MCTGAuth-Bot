@@ -83,13 +83,15 @@ Fabric 模组 ──HTTP POST /login-request──▶ Bot 服务 ──发送审
 
 ## Telegram 命令
 
+除 `/ping` 在群组与私聊中均可用外，其余命令仅在私聊中响应（群组内静默忽略）。
+
 **普通用户：**
 
 - `/start` — 无参数时打开用户面板：显示绑定状态（角色名、绑定时间），内联按钮可 **刷新** 状态或切换到 **帮助** 视图（消息原地编辑，不刷屏）。
 - `/start <令牌>` — 通过 deep-link 携带令牌自动绑定。
 - `/help` — 显示使用帮助（仅用户命令，不含管理员命令）。
 - `/address` — 回复配置的服务器地址文案（`config.toml` 的 `[messages]` 中 `address` 键，支持 HTML）。
-- `/ping` — 回复存活确认文案（`[messages]` 中 `ping` 键），用于检测 Bot 是否在线。
+- `/ping` — 回复存活确认文案（`[messages]` 中 `ping` 键），用于检测 Bot 是否在线；群组与私聊中均可用。
 - 直接发送 8 位令牌文本 — 完成绑定。
 - 登录审批消息上的 **同意 / 拒绝** 按钮 — 批准或拒绝一次登录。
 
@@ -98,7 +100,7 @@ Fabric 模组 ──HTTP POST /login-request──▶ Bot 服务 ──发送审
 - `/list [页码]` — 分页查看所有绑定（每页 10 条）。
 - `/whois <mc_name|mc_uuid|tg_id>` — 查询单条绑定。
 - `/unbind <mc_name|mc_uuid>` — 解除绑定，并清理其令牌、取消其 pending 登录请求。
-- `/help` — 列出管理员命令（普通用户的 `/help` 只显示用户帮助）。
+- `/help` — 显示用户命令与管理员命令帮助（普通用户的 `/help` 只显示用户帮助）。
 
 ## HTTP API 契约（v1，权威版本）
 

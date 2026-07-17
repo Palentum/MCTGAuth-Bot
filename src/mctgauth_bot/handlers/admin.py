@@ -7,8 +7,9 @@ import html
 import logging
 from datetime import datetime, timezone
 
-from aiogram import Router
-from aiogram.filters import Command, CommandObject
+from aiogram import F, Router
+from aiogram.enums import ChatType
+from aiogram.filters import BaseFilter, Command, CommandObject
 from aiogram.types import Message
 
 from ..config import Config
@@ -17,12 +18,18 @@ from ..db import Database
 log = logging.getLogger(__name__)
 
 router = Router(name="admin")
+# 管理命令仅在私聊中响应，群组内静默忽略。
+router.message.filter(F.chat.type == ChatType.PRIVATE)
 
 PAGE_SIZE = 10
 
 
-class AdminFilter:
-    """仅放行 admin_ids 中的用户。"""
+class AdminFilter(BaseFilter):
+    """仅放行 admin_ids 中的用户。
+
+    必须继承 BaseFilter：aiogram 只对 Filter 子类强制按协程 await；
+    普通类的 async __call__ 会被当同步调用，返回的协程对象恒为真值，过滤器失效。
+    """
 
     def __init__(self, admin_ids: set[int]):
         self._admin_ids = admin_ids
@@ -44,7 +51,8 @@ def _fmt_ts(ts: int) -> str:
 
 @router.message(Command("help"))
 async def handle_help(message: Message, cfg: Config) -> None:
-    await message.answer(cfg.msg("admin_help"))
+    """管理员 /help：同时显示用户命令帮助与管理命令帮助。"""
+    await message.answer(cfg.msg("panel_help") + "\n\n" + cfg.msg("admin_help"))
 
 
 @router.message(Command("list"))

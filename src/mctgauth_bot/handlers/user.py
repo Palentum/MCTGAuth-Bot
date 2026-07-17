@@ -10,6 +10,7 @@ import time
 from datetime import datetime, timezone
 
 from aiogram import F, Router
+from aiogram.enums import ChatType
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.filters.callback_data import CallbackData
@@ -27,6 +28,11 @@ from ..tokens import TOKEN_RE
 log = logging.getLogger(__name__)
 
 router = Router(name="user")
+# 除 /ping 外的所有消息交互仅在私聊中响应，群组内静默忽略。
+router.message.filter(F.chat.type == ChatType.PRIVATE)
+
+# /ping 独立成路由且不加 chat 过滤：群组与私聊中均可用。
+ping_router = Router(name="ping")
 
 
 class LoginCb(CallbackData, prefix="lg"):
@@ -155,7 +161,7 @@ async def handle_address(message: Message, cfg: Config) -> None:
     await message.answer(cfg.msg("address"))
 
 
-@router.message(Command("ping"))
+@ping_router.message(Command("ping"))
 async def handle_ping(message: Message, cfg: Config) -> None:
     """/ping：回复存活确认文案，用于检测 Bot 状态。"""
     await message.answer(cfg.msg("ping"))
