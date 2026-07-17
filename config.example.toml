@@ -39,3 +39,5 @@ db_path = "mctgauth.db"
 # [messages]
 # bind_success = "绑定成功！角色 <b>{mc_name}</b> 已关联，请在游戏中执行 /account login。"
 # login_prompt = "<b>{mc_name}</b> 正在从 IP <code>{ip}</code> 请求登录服务器。"
+# /address 命令的回复文案（服务器地址等），支持 HTML 标签。
+# address = "服务器地址：<code>play.example.com</code>"

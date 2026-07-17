@@ -41,11 +41,14 @@ DEFAULT_MESSAGES: dict[str, str] = {
         "3. 回到游戏执行 <code>/account login</code>，然后点击我发来的审批消息中的「同意」即可进入。\n\n"
         "命令：\n"
         "<code>/start</code> — 打开用户面板\n"
+        "<code>/address</code> — 查看服务器地址\n"
         "<code>/help</code> — 显示本帮助"
     ),
     "panel_btn_refresh": "🔄 刷新",
     "panel_btn_help": "❓ 帮助",
     "panel_btn_back": "⬅️ 返回",
+    # 服务器地址（/address 命令回复，建议在 config.toml 的 [messages] 中覆盖）
+    "address": "管理员尚未配置服务器地址。",
     # 登录审批
     "login_prompt": "<b>{mc_name}</b> 正在从 IP <code>{ip}</code> 请求登录服务器。",
     "login_btn_approve": "同意",

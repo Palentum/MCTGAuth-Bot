@@ -149,6 +149,12 @@ async def handle_help(message: Message, db: Database, cfg: Config) -> None:
     await message.answer(text, reply_markup=keyboard)
 
 
+@router.message(Command("address"))
+async def handle_address(message: Message, cfg: Config) -> None:
+    """/address：回复配置中的服务器地址文案。"""
+    await message.answer(cfg.msg("address"))
+
+
 @router.callback_query(PanelCb.filter())
 async def handle_panel_callback(
     callback: CallbackQuery, callback_data: PanelCb, db: Database, cfg: Config
