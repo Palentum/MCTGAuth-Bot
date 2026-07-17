@@ -89,6 +89,7 @@ Fabric 模组 ──HTTP POST /login-request──▶ Bot 服务 ──发送审
 - `/start <令牌>` — 通过 deep-link 携带令牌自动绑定。
 - `/help` — 显示使用帮助（仅用户命令，不含管理员命令）。
 - `/address` — 回复配置的服务器地址文案（`config.toml` 的 `[messages]` 中 `address` 键，支持 HTML）。
+- `/ping` — 回复存活确认文案（`[messages]` 中 `ping` 键），用于检测 Bot 是否在线。
 - 直接发送 8 位令牌文本 — 完成绑定。
 - 登录审批消息上的 **同意 / 拒绝** 按钮 — 批准或拒绝一次登录。
 

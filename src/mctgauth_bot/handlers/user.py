@@ -155,6 +155,12 @@ async def handle_address(message: Message, cfg: Config) -> None:
     await message.answer(cfg.msg("address"))
 
 
+@router.message(Command("ping"))
+async def handle_ping(message: Message, cfg: Config) -> None:
+    """/ping：回复存活确认文案，用于检测 Bot 状态。"""
+    await message.answer(cfg.msg("ping"))
+
+
 @router.callback_query(PanelCb.filter())
 async def handle_panel_callback(
     callback: CallbackQuery, callback_data: PanelCb, db: Database, cfg: Config

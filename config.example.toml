@@ -41,3 +41,5 @@ db_path = "mctgauth.db"
 # login_prompt = "<b>{mc_name}</b> 正在从 IP <code>{ip}</code> 请求登录服务器。"
 # /address 命令的回复文案（服务器地址等），支持 HTML 标签。
 # address = "服务器地址：<code>play.example.com</code>"
+# /ping 命令的回复文案（存活确认）。
+# ping = "🏓 Pong！Bot 运行正常。"

@@ -42,6 +42,7 @@ DEFAULT_MESSAGES: dict[str, str] = {
         "命令：\n"
         "<code>/start</code> — 打开用户面板\n"
         "<code>/address</code> — 查看服务器地址\n"
+        "<code>/ping</code> — 检测 Bot 是否在线\n"
         "<code>/help</code> — 显示本帮助"
     ),
     "panel_btn_refresh": "🔄 刷新",
@@ -49,6 +50,8 @@ DEFAULT_MESSAGES: dict[str, str] = {
     "panel_btn_back": "⬅️ 返回",
     # 服务器地址（/address 命令回复，建议在 config.toml 的 [messages] 中覆盖）
     "address": "管理员尚未配置服务器地址。",
+    # 状态检测（/ping 命令回复）
+    "ping": "🏓 Pong！Bot 运行正常。",
     # 登录审批
     "login_prompt": "<b>{mc_name}</b> 正在从 IP <code>{ip}</code> 请求登录服务器。",
     "login_btn_approve": "同意",
