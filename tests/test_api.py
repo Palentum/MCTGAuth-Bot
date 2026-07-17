@@ -229,6 +229,47 @@ async def test_login_request_concurrent_reuses_reservation(
     assert len({(await response.json())["request_id"] for response in responses}) == 1
 
 
+async def test_login_request_concurrent_first_send_fails(
+    client, auth_headers, db, notifier
+):
+    # 首个请求在发送悬停期间被第二个请求复用预留，随后首个发送失败：
+    # 复用方拿到的 request_id 不能变成 404（回归：曾因物理删除预留而 404）。
+    await db.create_binding(42, "uuid-x", "Steve")
+    first_send_started = asyncio.Event()
+    release_send = asyncio.Event()
+
+    async def blocking_failing_send(tg_user_id, mc_name, ip, request_id):
+        notifier.send_calls.append((tg_user_id, mc_name, ip, request_id))
+        first_send_started.set()
+        await release_send.wait()
+        raise RuntimeError("模拟发送失败")
+
+    notifier.send_login_prompt = blocking_failing_send
+    payload = {"mc_uuid": "uuid-x", "mc_name": "Steve", "ip": "1.2.3.4"}
+    first = asyncio.create_task(
+        client.post("/api/v1/login-request", headers=auth_headers, json=payload)
+    )
+    await first_send_started.wait()
+    # 第二个请求在首个发送悬停期间复用预留，立即得到 200 + 既有 request_id。
+    second = await client.post(
+        "/api/v1/login-request", headers=auth_headers, json=payload
+    )
+    assert second.status == 200
+    reused_id = (await second.json())["request_id"]
+
+    # 放行首个发送使其失败。
+    release_send.set()
+    first_resp = await first
+    assert first_resp.status == 502
+    # 只发一条（被复用），复用方的 request_id 仍可查到终态 expired，而非 404。
+    assert len(notifier.send_calls) == 1
+    polled = await client.get(
+        f"/api/v1/login-request/{reused_id}", headers=auth_headers
+    )
+    assert polled.status == 200
+    assert (await polled.json())["status"] == "expired"
+
+
 async def test_login_request_replaces_expired_pending(
     client, auth_headers, db, notifier
 ):
@@ -311,9 +352,9 @@ async def test_login_request_tg_send_failed(client, auth_headers, db, notifier):
     )
     assert resp.status == 502
     assert (await resp.json())["error"] == "tg_send_failed"
-    # 发送失败不创建请求。
+    # 发送失败不留下 pending；预留行改置终态 expired（供并发复用方轮询到终态而非 404）。
     assert await db.get_pending_for_uuid("uuid-x") is None
-    assert await db.get_login_request(notifier.send_calls[0][3]) is None
+    assert (await db.get_login_request(notifier.send_calls[0][3]))["status"] == "expired"
 
 
 async def test_login_request_rate_limited(client, auth_headers, db):

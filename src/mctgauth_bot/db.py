@@ -370,10 +370,16 @@ class Database:
             return None, pending
 
     async def release_login_request(self, request_id: str) -> None:
-        """删除尚未发出 Telegram 消息的预留请求。"""
+        """作废尚未发出 Telegram 消息的预留请求（置为终态 expired）。
+
+        并发下另一请求可能已通过 reserve 复用了这条预留（它被当作可复用的
+        pending 返回并已把 request_id 回给对端），因此不能物理删除——否则复用
+        方持有的 request_id 会指向不存在的行，GET 返回 404。改置为 'expired'，
+        让复用方轮询到合法终态。expired 行不占用部分唯一索引，不阻塞后续重试。
+        """
         async with self._lock:
             await self._conn.execute(
-                "DELETE FROM login_requests "
+                "UPDATE login_requests SET status='expired' "
                 "WHERE id=? AND status='pending' "
                 "AND tg_chat_id IS NULL AND tg_message_id IS NULL",
                 (request_id,),
