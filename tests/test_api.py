@@ -449,6 +449,32 @@ async def test_delete_login_request_terminal(client, auth_headers, db, notifier)
     assert len(notifier.close_calls) == 0
 
 
+async def test_delete_login_request_expired_not_downgraded_to_cancelled(
+    client, auth_headers, db, notifier
+):
+    # 超时但库里仍为 pending 的请求：GET 已报告 expired，DELETE 不得倒退为 cancelled。
+    now = int(time.time())
+    await db.create_login_request(
+        "stale-request", "uuid-x", "Steve", None, now - 60, now - 1,
+        tg_chat_id=42, tg_message_id=1001,
+    )
+    r1 = await client.get("/api/v1/login-request/stale-request", headers=auth_headers)
+    assert (await r1.json())["status"] == "expired"
+
+    resp = await client.delete(
+        "/api/v1/login-request/stale-request", headers=auth_headers
+    )
+    assert resp.status == 200
+    assert (await resp.json())["status"] == "expired"
+
+    r2 = await client.get("/api/v1/login-request/stale-request", headers=auth_headers)
+    assert (await r2.json())["status"] == "expired"
+    assert (await db.get_login_request("stale-request"))["status"] == "expired"
+    # TG 消息以“过期”文案关闭，而非“取消”。
+    assert len(notifier.close_calls) == 1
+    assert "过期" in notifier.close_calls[0][2]
+
+
 async def test_delete_login_request_loses_cancel_race(
     client, auth_headers, db, notifier, monkeypatch
 ):

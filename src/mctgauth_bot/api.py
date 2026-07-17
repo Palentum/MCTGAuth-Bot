@@ -227,8 +227,15 @@ async def _handle_delete_login_request(request: web.Request) -> web.Response:
         # 已是终态：原样返回当前状态。
         return web.json_response({"status": row["status"]})
 
-    # pending → cancelled，并编辑 TG 消息移除按钮。
-    if not await db.set_login_status(request_id, "cancelled"):
+    # 已超时的 pending 在 GET 中被报告为 expired，DELETE 不得把它倒退为
+    # cancelled，否则客户端观察到的终态会发生变化。此处直接落库为 expired。
+    if row["expires_at"] <= int(time.time()):
+        target_status, msg_key = "expired", "login_expired"
+    else:
+        target_status, msg_key = "cancelled", "login_cancelled"
+
+    # pending → 终态，并编辑 TG 消息移除按钮。
+    if not await db.set_login_status(request_id, target_status):
         row = await db.get_login_request(request_id)
         if row is None:
             return _json_error("not_found", "登录请求不存在。", 404)
@@ -238,11 +245,11 @@ async def _handle_delete_login_request(request: web.Request) -> web.Response:
             await notifier.close_request_message(
                 row["tg_chat_id"],
                 row["tg_message_id"],
-                cfg.msg("login_cancelled", mc_name=row["mc_name"]),
+                cfg.msg(msg_key, mc_name=row["mc_name"]),
             )
         except Exception:
-            log.warning("编辑取消消息失败：request_id=%s", request_id, exc_info=True)
-    return web.json_response({"status": "cancelled"})
+            log.warning("编辑关闭消息失败：request_id=%s", request_id, exc_info=True)
+    return web.json_response({"status": target_status})
 
 
 def build_app(db: Database, cfg: Config, notifier: Notifier) -> web.Application:
